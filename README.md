@@ -1,5 +1,5 @@
 # WGAN-TS
-Implementation of [A Two-Step Computation of the Exact GAN Wasserstein Distance](http://proceedings.mlr.press/v80/liu18d.html)
+PyTorch implementation of [A Two-Step Computation of the Exact GAN Wasserstein Distance](http://proceedings.mlr.press/v80/liu18d.html)
 # Usage
 DATASET: mnist/cifar10/lsun <br>
 DATASET_PATH: path to the root folder of a dataset <br>
