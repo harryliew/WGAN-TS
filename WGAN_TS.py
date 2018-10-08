@@ -343,7 +343,7 @@ def comput_dist(real, fake):
     return dist
 
 
-def Wasserstein_LR(dist):
+def Wasserstein_LP(dist):
     b = matrix(dist.cpu().double().numpy().flatten())
     # sol = solvers.lp(c, A, b, primalstart=pStart, solver='glpk')
     sol = solvers.lp(c, A, b)
@@ -453,7 +453,7 @@ while epoch <= epochs:
         real, fake, real_cpu, noise, batch_id = read_data(data_iter, batch_id)
 
         dist = comput_dist(real, fake)
-        sol = Wasserstein_LR(dist)
+        sol = Wasserstein_LP(dist)
         if LAMBDA > 0:
             mapping = approx_OT(sol)
             real_ordered = real[mapping]  # match real and fake
