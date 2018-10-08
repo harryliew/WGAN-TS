@@ -29,7 +29,7 @@ import models.mlp as mlp
 ####################################################################################
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--dataset', required=True, help='mnist | cifar10 | lsun | imagenet | folder | lfw')
+parser.add_argument('--dataset', required=True, help='mnist | cifar10 | lsun | imagenet | folder | lfw | others')
 parser.add_argument('--dataroot', required=True, help='path to dataset')
 parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
 parser.add_argument('--batchSize', type=int, default=64, help='input batch size')
@@ -45,7 +45,7 @@ parser.add_argument('--lrG', type=float, default=1e-4, help='learning rate for G
 parser.add_argument('--beta1', type=float, default=0.5, help='beta1 for adam. default=0.5')
 parser.add_argument('--beta2', type=float, default=0.999, help='beta2 for adam. default=0.999')
 parser.add_argument('--LAMBDA', type=float, default=10.0, help='lambda for optimal transport regularization')
-parser.add_argument('--no_cuda', action='store_true', default=False, help='enables CUDA training')
+parser.add_argument('--no_cuda', action='store_true', default=False, help='disable CUDA training')
 parser.add_argument('--retrain', action='store_true', default=False, help='re-train or not')
 parser.add_argument('--pin_mem', action='store_true', help='use pin memory or not')
 parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
@@ -63,7 +63,7 @@ parser.add_argument('--n_extra_layers', type=int, default=0, help='Number of ext
 parser.add_argument('--result_path', default=None, help='path to store samples and models')
 parser.add_argument('--result_folder', default=None, help='folder to store samples and models')
 parser.add_argument('--RMSprop', action='store_true', help='Whether to use RMSprop (default is Adam)')
-parser.add_argument('--Adam', action='store_true', help='Whether to use Adam (default is Adam)')
+parser.add_argument('--Adagrad', action='store_true', help='Whether to use Adagrad (default is Adam)')
 args = parser.parse_args()
 print(args)
 
@@ -86,11 +86,11 @@ result_path = args.result_path
 result_folder = args.result_folder
 
 if result_folder is None:
-    print("WARNING: No result folder provided. Results will be saved to temp_res")
-    result_folder = 'temp_res'
+    print("WARNING: No result folder provided. Results will be saved to the results folder.")
+    result_folder = 'results'
 if result_path is None:
-    print("WARNING: No result path provided. Results will be saved to current directory")
-    result_folder = '.'
+    print("WARNING: No result path provided. The results folder is created under current directory.")
+    result_path = '.'
 
 result_folderPath = '{0}/{1}'.format(result_path, result_folder)
 if not os.path.exists(result_folderPath):
@@ -124,11 +124,17 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 if torch.cuda.is_available() and not args.cuda:
     print("WARNING: You have a CUDA device, so you should probably run with --cuda")
 
+Optimizer = 'Adam'
+if args.RMSprop:
+    Optimizer = 'RMSprop'
+if args.Adagrad:
+    Optimizer = 'Adagrad'
+
 if args.dataset in ['imagenet', 'folder', 'lfw']:
     # folder dataset
     dataset = dset.ImageFolder(root=args.dataroot,
                                transform=transforms.Compose([
-                                   transforms.Scale(args.imageSize),
+                                   transforms.Resize(args.imageSize),
                                    transforms.CenterCrop(args.imageSize),
                                    transforms.ToTensor(),
                                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
@@ -137,7 +143,7 @@ if args.dataset in ['imagenet', 'folder', 'lfw']:
 elif args.dataset == 'lsun':
     dataset = dset.LSUN(db_path=args.dataroot, classes=['bedroom_train'],
                         transform=transforms.Compose([
-                            transforms.Scale(args.imageSize),
+                            transforms.Resize(args.imageSize),
                             transforms.CenterCrop(args.imageSize),
                             transforms.ToTensor(),
                             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
@@ -146,7 +152,7 @@ elif args.dataset == 'lsun':
 elif args.dataset == 'cifar10':
     dataset = dset.CIFAR10(root=args.dataroot, download=True,
                            transform=transforms.Compose([
-                               transforms.Scale(args.imageSize),
+                               transforms.Resize(args.imageSize),
                                transforms.ToTensor(),
                                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                            ])
@@ -156,12 +162,21 @@ elif args.dataset == 'mnist':
     dataset = dset.MNIST(root=args.dataroot,
                          train=True, # download=True,
                          transform=transforms.Compose([
-                            transforms.Scale(args.imageSize),
+                            transforms.Resize(args.imageSize),
                             transforms.ToTensor(),
                             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
                          ])
     )
     nc = 1
+else:
+   dataset = dset.ImageFolder(root=args.dataroot,
+                         transform=transforms.Compose([
+                            transforms.Resize(args.imageSize),
+                            transforms.ToTensor(),
+                            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                         ])
+    )
+   nc = 3
 
 assert dataset
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batchSize,
@@ -218,13 +233,13 @@ netG = netG.to(device)
 criterion = torch.nn.MSELoss()
 
 
-def set_optimizerD(Optmizer='Adam'):
+def set_optimizerD(Optimizer='Adam'):
     # setup optimizer
-    if Optmizer == 'RMSprop':
+    if Optimizer == 'RMSprop':
         optimizerD = optim.RMSprop(netD.parameters(), lr = args.lrD)
-    elif Optmizer == 'Adam':
+    elif Optimizer == 'Adam':
         optimizerD = optim.Adam(netD.parameters(), lr=args.lrD, betas=(args.beta1, args.beta2))
-    elif Optmizer == 'Adagrad':
+    elif Optimizer == 'Adagrad':
         optimizerD = optim.Adagrad(netD.parameters(), lr=args.lrD)
     else:
         optimizerD = optim.Adam(netD.parameters(), lr=args.lrD, betas=(args.beta1, args.beta2))
@@ -232,14 +247,14 @@ def set_optimizerD(Optmizer='Adam'):
     return optimizerD
 
 
-def set_optimizerG(Optmizer='Adam'):
+def set_optimizerG(Optimizer='Adam'):
     # setup optimizer
     # setup optimizer
-    if Optmizer == 'RMSprop':
+    if Optimizer == 'RMSprop':
         optimizerG = optim.RMSprop(netG.parameters(), lr=args.lrG)
-    elif Optmizer == 'Adam':
+    elif Optimizer == 'Adam':
         optimizerG = optim.Adam(netG.parameters(), lr=args.lrG, betas=(args.beta1, args.beta2))
-    elif Optmizer == 'Adagrad':
+    elif Optimizer == 'Adagrad':
         optimizerG = optim.Adagrad(netG.parameters(), lr=args.lrG)
     else:
         optimizerG = optim.Adam(netG.parameters(), lr=args.lrG, betas=(args.beta1, args.beta2))
@@ -329,7 +344,7 @@ def comput_dist(real, fake):
     return dist
 
 
-def Wasserstein_LP(dist):
+def Wasserstein_LR(dist):
     b = matrix(dist.cpu().double().numpy().flatten())
     # sol = solvers.lp(c, A, b, primalstart=pStart, solver='glpk')
     sol = solvers.lp(c, A, b)
@@ -357,7 +372,7 @@ def approx_OT(sol):
 ## f(y) = inf { f(x) + c(x,y) }
 ## 0 \in grad_x { f(x) + c(x,y) }
 ## 0 \in grad_x f(x) + sign(x-y), since c(x,y) = ||x-y||_1
-## regularize || grad_x f(x) - sign(y-x) ||^2
+## regualize || grad_x f(x) - sign(y-x) ||^2
 ###############################################################################
 def OT_regularization(netD, fake, RF_dif_sign):
     fake.requires_grad_()
@@ -409,11 +424,12 @@ data_iter = iter(dataloader)
 batch_id = 0
 Diters = int(args.Diters)
 DOptIters = int(args.DOptIters)
-optimizerD, optimizerG = set_optimizerD(), set_optimizerG()
+optimizerD, optimizerG = set_optimizerD(Optimizer), set_optimizerG(Optimizer)
 epoch, Giter = load_last_model(netD, netG, model_path)
 WD = torch.FloatTensor(1)
 
 while epoch <= epochs:
+
     ###########################################################################
     #               (1) Update the Discriminator networks D
     ###########################################################################
@@ -438,7 +454,7 @@ while epoch <= epochs:
         real, fake, real_cpu, noise, batch_id = read_data(data_iter, batch_id)
 
         dist = comput_dist(real, fake)
-        sol = Wasserstein_LP(dist)
+        sol = Wasserstein_LR(dist)
         if LAMBDA > 0:
             mapping = approx_OT(sol)
             real_ordered = real[mapping]  # match real and fake
@@ -475,10 +491,10 @@ while epoch <= epochs:
     ###########################################################################
     for p in netD.parameters():
         p.requires_grad = False # frozen D
-        
     ###########################################################################
     ##                               Update G
     ###########################################################################
+
     netG.zero_grad()
     fake = netG(noise)
     output_F_mean_after, output_fake = netD(fake)
