@@ -184,7 +184,6 @@ dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batchSize,
                                          drop_last=True, pin_memory=args.pin_mem)
 
 
-
 # custom weights initialization called on netG and netD
 def weights_init(m):
     classname = m.__class__.__name__
